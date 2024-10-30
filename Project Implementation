@@ -1,0 +1,83 @@
+**Task1**- Creating a continuous export pipeline to Pub/Sub
+I’ll set up continuous exports of Security Command Center findings to Pub/Sub. This involves creating a Pub/Sub topic and subscription to forward findings, 
+enabling real-time integration with external security systems like Splunk or QRadar. The export captures only newly created findings, and I’ll simulate an 
+application by fetching messages from the Pub/Sub subscription after configuration. 
+This setup enhances external monitoring by routing security alerts directly from SCC to Pub/Sub for further analysis.
+First thing to do is create a Pub/Sub topic:
+1. I opened the navigation menu and under the Analytics header, click Pub/Sub > Topics. Clicked the Create Topic button.
+2. In export-findings-pubsub-topic, I entered the Topic ID. Kept the other default settings and clicked Create.
+3. Clicked on Subscriptions from the left-hand menu and Clicked on export-findings-pubsub-topic-sub.
+4. Then, I opened the navigation menu and select Security > Security Command Center > Overview > Settings. Clicked on the Continuous Exports tab.
+5. Clicked the Create Pub/Sub Export button. For the continuous export name, I entered in export-findings-pubsub.
+6. For the continuous export description, I entered in Continuous exports of Findings to Pub/Sub and BigQuery.
+7. For the project name, I used the Project ID of the project I was working on
+8. From the "Select a Cloud Pub/Sub Topic" dropdown, I selected export-findings-pubsub-topic, and Set the findings query to the following code and clicked on save:
+# state="ACTIVE"
+# AND NOT mute="MUTED"
+This query ensured that all new ACTIVE and NOT MUTED findings will be forwarded to the newly created Pub/Sub topic.
+At this point, I had successfully created a continuous export from Security Command Center to Pub/Sub. 
+Next thing is to now create new findings and check how they are exported to Pub/Sub.
+9. I opened a new cloud shell session and run the following code to create a virtual Machine:
+# gcloud compute instances create instance-1 --zone=lab zone \ --machine-type e2-micro \ --scopes=https://www.googleapis.com/auth/cloud-platform
+This command will create a new VM instance with a Public IP address and a default Service Account attached. This activity generateed three new vulnerability findings:
+Public IP address, Default service account used, Compute secure boot disabled
+10. Opened the navigation menu and under the Analytics header, click Pub/Sub > Subscriptions. Selected the export-findings-pubsub-topic-sub subscription.
+11. Selected the Messages tab from the center of the Console, clicked the Enable ack messages checkbox and clicked on the Pull button.
+In the Pub/Sub subscription, messages about vulnerabilities were seen, including issues with the public IP address, default service account, and disabled secure boot. 
+This action simulates how an application could forward SCC findings to an external security system, such as Splunk, for further monitoring.
+
+
+**Task2**-Exporting and Analyzing SCC findings with BigQuery
+
+SCC findings can be exported to a BigQuery dataset which can be used for building analytical dashboards to check the often occuring findings in the organization
+1. In the cloud Shell session, I run the following command to create a new BigQuery dataset:
+# PROJECT_ID=$(gcloud config get project)
+# bq --location=lab region --apilog=/dev/null mk --dataset \
+# $PROJECT_ID:continuous_export_dataset
+2. Run the following code to enable SCC service at this stage: # gcloud services enable securitycenter.googleapis.com
+3. I then created a new export by entering the command: # gcloud scc bqexports create scc-bq-cont-export --dataset=projects//datasets/continuous_export_dataset --project=PROJECT_ID
+4. Run the following commands to create 3 new service accounts without any IAM permissions and create 3 user-managed service account keys for them:
+# for i in {0..2}; do
+# gcloud iam service-accounts create sccp-test-sa-$i;
+# gcloud iam service-accounts keys create /tmp/sa-key-$i.json \
+# --iam-account=sccp-test-sa-$i@PROJECT_ID.iam.gserviceaccount.com;
+# done
+Once new findings are created in SCC, they will be exported to BigQuery. For storing them, the export pipeline will create a new table “findings”
+As soon as the SCC is enabled, it starts scanning existing vulnerabilities and eventually make more report on the infrastructure
+Exporting the findings to a BigQuery database is a good practice for running analytics against findings. The process is done by:
+5. Opened the navigation menu and selected Cloud Storage > Buckets. Clicked the Create button.
+6. Set the unique bucket name to scc-export-bucket-PROJECT_ID and clicked Continue.
+7. Set Location type to Region. Chose lab region for the location. Clicked Create.
+8. Pressed the Confirm button when asked about Enforce public access prevention on this bucket. Opened the navigation menu and select Security > Security Command Center > Findings.
+9. Clicked the Export button.
+10. From the dropdown list, select Cloud Storage.For the project name, selected the generated Project ID from the cloud console 
+11. Then select the Export path by clicking the BROWSE button. Clicked the arrow next to the scc-export-bucket-PROJECT_ID button. Set the filename to findings.jsonl then clicked SELECT.
+12. In the Format drop-down list, I selected JSONL. Changed the Time Range to All time. 
+13. Then clicked the Export button. Opened the navigation menu and select BigQuery > BigQuery Studio. From the left-hand "Explorer" menu, clicked on the +ADD button.
+14. In a new "Add" window, clicked on the "Google Cloud Storage" and then set the following parameters:
+Create table from =	Google Cloud Storage, Select the file from GCS bucket =	scc-export-bucket-PROJECT_ID/findings.jsonl, File format = JSONL, Dataset =	continuous_export_dataset
+Table = old_findings, Schema = Enable the "Edit as text" toggle
+15. In the following schema, I wrote in this code:
+[   
+  {
+    "mode": "NULLABLE",
+    "name": "resource",
+    "type": "JSON"
+  },   
+  {
+    "mode": "NULLABLE",
+    "name": "finding",
+    "type": "JSON"
+  }
+]
+16. Then I clicked the CREATE TABLE button. When the new table was created, clicked the link GO TO TABLE. Clicked the preview tab and viewed the existing findings.
+
+Findings successfully exported.
+
+
+
+
+
+
+
+
